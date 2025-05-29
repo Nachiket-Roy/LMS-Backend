@@ -4,6 +4,9 @@ const mongoose = require('mongoose');
 const session = require('express-session');
 const passport = require('./config/passport')
 const authRoutes = require('./routes/auth'); 
+const bookIssueRoutes = require('./routes/bookIssue');
+const path = require('path');
+const booksRouter = require('./routes/booksRoutes'); // adjust path if needed
 const app = express();
 
 // MongoDB connection
@@ -29,7 +32,10 @@ app.use(passport.session());
 
 const PORT = process.env.PORT || 5000;
 
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/', authRoutes);
+app.use('/book-issues', bookIssueRoutes);
+app.use('/books', booksRouter);
 
 app.listen(PORT, () => {
     console.log(`🚀 Server running on http://localhost:${PORT}`);

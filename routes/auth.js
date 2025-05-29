@@ -5,11 +5,12 @@ const router = express.Router();
 
 // Login route
 router.post('/login', passport.authenticate('local'), (req, res) => {
-    const role = req.user.role;
+  const { role, _id, name } = req.user;
 
-    if (role === 'admin') return res.redirect('/dashboard/admin');
-    if (role === 'librarian') return res.redirect('/dashboard/librarian');
-    return res.redirect('/dashboard/user');
+  // Redirect to role-based URL with user ID or name
+  if (role === 'admin') return res.redirect(`/dashboard/${_id}`);
+  if (role === 'librarian') return res.redirect(`/dashboard/${name}`);
+  return res.redirect(`/dashboard/user/${_id}`);
 });
 
 // Register route
