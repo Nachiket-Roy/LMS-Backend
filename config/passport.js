@@ -1,23 +1,25 @@
+// config/passport.js
 const passport = require('passport');
+const { Strategy: JwtStrategy, ExtractJwt } = require('passport-jwt');
 const User = require('../models/User');
-const LocalStrategy = require('passport-local').Strategy;
+require('dotenv').config();
 
-// Use passport-local-mongoose strategy
-passport.use(new LocalStrategy({ usernameField: 'email' }, User.authenticate()));
 
-// Serialize user by _id and role
-passport.serializeUser((user, done) => {
-  done(null, { id: user._id, role: user.role });
-});
+const opts = {
+  jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+  secretOrKey: process.env.JWT_SECRET,
+};
 
-// Deserialize user based on stored id
-passport.deserializeUser(async (userObj, done) => {
-  try {
-    const user = await User.findById(userObj.id);
-    done(null, user);
-  } catch (err) {
-    done(err);
-  }
-});
+passport.use(
+  new JwtStrategy(opts, async (jwt_payload, done) => {
+    try {
+      const user = await User.findById(jwt_payload.id);
+      if (user) return done(null, user);
+      else return done(null, false);
+    } catch (err) {
+      return done(err, false);
+    }
+  })
+);
 
 module.exports = passport;

@@ -1,44 +1,43 @@
-const express = require('express');
-require('dotenv').config();
-const mongoose = require('mongoose');
-const session = require('express-session');
-const passport = require('./config/passport')
-const authRoutes = require('./routes/auth'); 
-const bookIssueRoutes = require('./routes/bookIssue');
-const path = require('path');
-const booksRouter = require('./routes/booksRoutes'); // adjust path if needed
+const express = require("express");
+require("dotenv").config();
+const mongoose = require("mongoose");
+const passport = require('./config/passport');// const authRoutes = require('./routes/authRoutes');
+// const bookIssueRoutes = require('./routes/issue&returnRoute');
+const path = require("path");
+// const booksRouter = require('./routes/booksRoutes');
 const app = express();
-
+// const topBooks = require('./routes/topBookRouter')
+const User = require("./routes/userRoute");
+const router = require("./routes/auth");
+const Lib = require("./routes/librarian")
+// const User = require('./models/User');
 // MongoDB connection
 const DB = process.env.MONGODB;
-mongoose.connect(DB)
-    .then(() => console.log(' MongoDB connected'))
-    .catch((err) => console.error(' MongoDB connection error:', err));
+mongoose
+  .connect(DB)
+  .then(() => console.log(" MongoDB connected"))
+  .catch((err) => console.error(" MongoDB connection error:", err));
 
 // Middleware
 app.use(express.json());
 
-// Express session
-app.use(session({
-    secret: process.env.SESSION_SECRET || 'defaultSecret', // Store secret in .env
-    resave: false,
-    saveUninitialized: false,
-}));
-
 // Passport initialization
 app.use(passport.initialize());
-app.use(passport.session());
-
 
 const PORT = process.env.PORT || 5000;
-
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-app.use('/', authRoutes);
-app.use('/book-issues', bookIssueRoutes);
-app.use('/books', booksRouter);
+app.use("/auth", router);
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+app.use("/user", User);
+app.use("/", Lib)
+// Catch all error
+app.use((err, req, res, next) => {
+  const statusCode = err.statusCode || 500;
+  const message = err.message || "Something went wrong";
+  res.status(statusCode).json({ error: message });
+});
 
 app.listen(PORT, () => {
-    console.log(`🚀 Server running on http://localhost:${PORT}`);
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
 // app.post('/login', passport.authenticate('local'), (req, res) => {
 //   const role = req.user.role;
