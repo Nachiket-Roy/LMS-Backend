@@ -9,7 +9,6 @@ const Notification = require("./models/Notification");
 const Payment = require("./models/Payment");
 require("./models/Settings");
 const Borrow = require("./models/Borrow");
-const Feedback = require("./models/Feedback");
 const Query = require("./models/Query");
 
 const DB = process.env.MONGODB;
@@ -26,6 +25,7 @@ const bookData = [
     publisher: "J.B. Lippincott & Co.",
     description:
       "A classic novel about racial injustice and childhood in the American South.",
+    coverImagePath: "https://covers.openlibrary.org/b/id/8225261-L.jpg",
   },
   {
     title: "1984",
@@ -37,6 +37,7 @@ const bookData = [
     publisher: "Secker & Warburg",
     description:
       "A dystopian social science fiction novel about totalitarianism.",
+    coverImagePath: "https://covers.openlibrary.org/b/id/7222246-L.jpg",
   },
   {
     title: "The Great Gatsby",
@@ -47,6 +48,7 @@ const bookData = [
     availableCopies: 1,
     publisher: "Charles Scribner's Sons",
     description: "A tale of the Jazz Age and the American Dream.",
+    coverImagePath: "https://covers.openlibrary.org/b/id/7222246-L.jpg",
   },
   {
     title: "Clean Code",
@@ -57,6 +59,8 @@ const bookData = [
     availableCopies: 4,
     publisher: "Prentice Hall",
     description: "A handbook of agile software craftsmanship.",
+    coverImagePath:
+      "https://images-na.ssl-images-amazon.com/images/I/41xShlnTZTL._SX374_BO1,204,203,200_.jpg",
   },
   {
     title: "The Catcher in the Rye",
@@ -68,6 +72,7 @@ const bookData = [
     publisher: "Little, Brown and Company",
     description:
       "A controversial novel about teenage rebellion and alienation.",
+    coverImagePath: "https://covers.openlibrary.org/b/id/8231856-L.jpg",
   },
   {
     title: "Dune",
@@ -78,6 +83,7 @@ const bookData = [
     availableCopies: 2,
     publisher: "Chilton Books",
     description: "A science fiction epic set in a distant future.",
+    coverImagePath: "https://covers.openlibrary.org/b/id/8085171-L.jpg",
   },
   {
     title: "The Psychology of Computer Programming",
@@ -88,6 +94,8 @@ const bookData = [
     availableCopies: 3,
     publisher: "Van Nostrand Reinhold",
     description: "Classic work on the human factors in software development.",
+    coverImagePath:
+      "https://images-na.ssl-images-amazon.com/images/I/41o9xhyCmPL._SX331_BO1,204,203,200_.jpg",
   },
   {
     title: "JavaScript: The Good Parts",
@@ -98,6 +106,7 @@ const bookData = [
     availableCopies: 1,
     publisher: "O'Reilly Media",
     description: "A guide to the best features of JavaScript.",
+    coverImagePath: "https://covers.openlibrary.org/b/id/240726-L.jpg",
   },
   {
     title: "Pride and Prejudice",
@@ -109,6 +118,7 @@ const bookData = [
     publisher: "T. Egerton",
     description:
       "A romantic novel about manners and marriage in Georgian England.",
+    coverImagePath: "https://covers.openlibrary.org/b/id/8226191-L.jpg",
   },
   {
     title: "The Lord of the Rings",
@@ -120,6 +130,7 @@ const bookData = [
     publisher: "George Allen & Unwin",
     description:
       "An epic high fantasy novel about the quest to destroy the One Ring.",
+    coverImagePath: "https://covers.openlibrary.org/b/id/8231991-L.jpg",
   },
   {
     title: "You Don't Know JS",
@@ -130,6 +141,8 @@ const bookData = [
     availableCopies: 4,
     publisher: "O'Reilly Media",
     description: "A series diving deep into the core mechanisms of JavaScript.",
+    coverImagePath:
+      "https://images-na.ssl-images-amazon.com/images/I/51l4r4Lz9DL._SX379_BO1,204,203,200_.jpg",
   },
 ];
 
@@ -215,7 +228,6 @@ async function seed() {
     await Notification.deleteMany({});
     await Payment.deleteMany({});
     await Borrow.deleteMany({});
-    await Feedback.deleteMany({});
     await Query.deleteMany({});
 
     // Drop collections to remove any problematic indexes
@@ -226,8 +238,7 @@ async function seed() {
       "notifications",
       "payments",
       "borrows",
-      "feedbacks",
-      "queries", // Fixed: was "query", should be "queries"
+      "queries",
     ];
     for (const collectionName of collections) {
       try {
@@ -243,11 +254,10 @@ async function seed() {
     console.log("Cleared all collections");
 
     // Insert users with more detailed profiles
-    const users = await User.insertMany([
+    const users = [
       {
         name: "John Doe",
         email: "user@example.com",
-        password: "password123",
         role: "user",
         phone: "+1234567890",
         address: "123 Main St, City, State 12345",
@@ -255,7 +265,6 @@ async function seed() {
       {
         name: "Jane Smith",
         email: "admin@example.com",
-        password: "password123",
         role: "admin",
         phone: "+1234567891",
         address: "456 Admin Ave, City, State 12345",
@@ -263,7 +272,6 @@ async function seed() {
       {
         name: "Bob Johnson",
         email: "librarian@example.com",
-        password: "password123",
         role: "librarian",
         phone: "+1234567892",
         address: "789 Library Ln, City, State 12345",
@@ -271,7 +279,6 @@ async function seed() {
       {
         name: "Alice Brown",
         email: "alice@example.com",
-        password: "password123",
         role: "user",
         phone: "+1234567893",
         address: "321 User Rd, City, State 12345",
@@ -279,12 +286,20 @@ async function seed() {
       {
         name: "Charlie Wilson",
         email: "charlie@example.com",
-        password: "password123",
         role: "user",
         phone: "+1234567894",
         address: "654 Reader St, City, State 12345",
       },
-    ]);
+    ];
+
+    // Register users with passport-local-mongoose to create hash and salt
+    const registeredUsers = [];
+    for (const userData of users) {
+      const user = new User(userData);
+      const registeredUser = await User.register(user, "password123");
+      registeredUsers.push(registeredUser);
+      console.log(`Registered user: ${userData.email}`);
+    }
 
     console.log("Users seeded successfully");
 
@@ -296,7 +311,7 @@ async function seed() {
           ...bookInfo,
           // Add addedBy field from seed2.js concept
           addedBy:
-            users.find((u) => u.role === "librarian")?._id || users[0]._id,
+            registeredUsers.find((u) => u.role === "librarian")?._id || registeredUsers[0]._id,
         });
         const savedBook = await book.save();
         books.push(savedBook);
@@ -308,73 +323,11 @@ async function seed() {
 
     console.log(`Books seeded: ${books.length} books inserted`);
 
-    // Enhanced feedback data from seed.js structure
-    const feedbackData = [
-      {
-        user_id: users[0]._id,
-        book_id: books[0]._id,
-        rating: 4,
-        comment: "Great read! The characters were really well written.",
-        anonymous: false,
-      },
-      {
-        user_id: users[1]._id,
-        book_id: books[2]._id,
-        rating: 5,
-        comment: "Absolutely loved it. Highly recommended.",
-        anonymous: false,
-      },
-      {
-        user_id: users[2]._id,
-        book_id: books[1]._id,
-        rating: 3,
-        comment: "Informative but could have been shorter.",
-        anonymous: true,
-      },
-      {
-        user_id: users[3]._id,
-        book_id: books[3]._id,
-        rating: 2,
-        comment: "Didn't enjoy it much. Writing style was difficult to follow.",
-        anonymous: false,
-      },
-      {
-        user_id: users[4]._id,
-        book_id: books[4]._id,
-        rating: 5,
-        comment: "Masterpiece. I would read it again.",
-        anonymous: true,
-      },
-    ];
-
-    // Insert feedback (book reviews)
-    // ✅ Seed Book Feedback
-    const feedbacks = [];
-
-    for (const entry of feedbackData) {
-      try {
-        const feedback = new Feedback(entry);
-        const saved = await feedback.save();
-        feedbacks.push(saved);
-
-        console.log(
-          `✅ Feedback: ${entry.rating}⭐ - "${entry.comment.slice(0, 30)}..."`
-        );
-      } catch (error) {
-        if (error.code === 11000) {
-          console.warn("⚠️ Duplicate feedback skipped (user-book pair exists)");
-        } else {
-          console.error("❌ Error inserting feedback:", error.message);
-        }
-      }
-    }
-
     // Insert general feedback/queries from seed2.js
-    // ✅ Seed General Queries (suggestions, complaints, etc.)
     const queries = [];
 
     // Find a user who is either librarian or admin
-    const librarian = users.find(
+    const librarian = registeredUsers.find(
       (u) => u.role === "librarian" || u.role === "admin"
     );
 
@@ -382,7 +335,7 @@ async function seed() {
       try {
         const query = new Query({
           ...queryData[i],
-          user_id: users[i % users.length]._id,
+          user_id: registeredUsers[i % registeredUsers.length]._id,
           resolvedBy:
             queryData[i].status === "resolved" ? librarian?._id : undefined,
           resolvedAt:
@@ -401,7 +354,7 @@ async function seed() {
     const borrowsData = [
       // ACTIVE BORROWS for John Doe (user@example.com)
       {
-        user_id: users[0]._id,
+        user_id: registeredUsers[0]._id,
         book_id: books[0]._id, // To Kill a Mockingbird
         status: "approved",
         requestDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000), // 5 days ago
@@ -412,7 +365,7 @@ async function seed() {
         totalFine: 0,
       },
       {
-        user_id: users[0]._id,
+        user_id: registeredUsers[0]._id,
         book_id: books[3]._id, // Clean Code
         status: "approved",
         requestDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000), // 3 days ago
@@ -425,7 +378,7 @@ async function seed() {
 
       // OVERDUE BOOKS for John Doe
       {
-        user_id: users[0]._id,
+        user_id: registeredUsers[0]._id,
         book_id: books[1]._id, // 1984
         status: "approved",
         requestDate: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000), // 20 days ago
@@ -436,7 +389,7 @@ async function seed() {
         totalFine: 25,
       },
       {
-        user_id: users[0]._id,
+        user_id: registeredUsers[0]._id,
         book_id: books[7]._id, // JavaScript: The Good Parts
         status: "approved",
         requestDate: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000), // 25 days ago
@@ -449,7 +402,7 @@ async function seed() {
 
       // DUE SOON for John Doe
       {
-        user_id: users[0]._id,
+        user_id: registeredUsers[0]._id,
         book_id: books[5]._id, // Dune
         status: "approved",
         requestDate: new Date(Date.now() - 12 * 24 * 60 * 60 * 1000), // 12 days ago
@@ -462,7 +415,7 @@ async function seed() {
 
       // READING HISTORY - RETURNED BOOKS for John Doe
       {
-        user_id: users[0]._id,
+        user_id: registeredUsers[0]._id,
         book_id: books[2]._id, // The Great Gatsby
         status: "returned",
         requestDate: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000), // 35 days ago
@@ -474,7 +427,7 @@ async function seed() {
         totalFine: 0,
       },
       {
-        user_id: users[0]._id,
+        user_id: registeredUsers[0]._id,
         book_id: books[4]._id, // The Catcher in the Rye
         status: "returned",
         requestDate: new Date(Date.now() - 50 * 24 * 60 * 60 * 1000), // 50 days ago
@@ -486,7 +439,7 @@ async function seed() {
         totalFine: 25,
       },
       {
-        user_id: users[0]._id,
+        user_id: registeredUsers[0]._id,
         book_id: books[8]._id, // Pride and Prejudice
         status: "returned",
         requestDate: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000), // 60 days ago
@@ -500,7 +453,7 @@ async function seed() {
 
       // RENEWABLE BOOK for John Doe (can be renewed)
       {
-        user_id: users[0]._id,
+        user_id: registeredUsers[0]._id,
         book_id: books[6]._id, // The Psychology of Computer Programming
         status: "approved",
         requestDate: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000), // 8 days ago
@@ -513,7 +466,7 @@ async function seed() {
 
       // PENDING REQUEST for John Doe
       {
-        user_id: users[0]._id,
+        user_id: registeredUsers[0]._id,
         book_id: books[9]._id, // The Lord of the Rings
         status: "requested",
         requestDate: new Date(Date.now() - 6 * 60 * 60 * 1000), // 6 hours ago
@@ -524,7 +477,7 @@ async function seed() {
 
       // Additional records for other users
       {
-        user_id: users[1]._id, // Jane Smith (admin)
+        user_id: registeredUsers[1]._id, // Jane Smith (admin)
         book_id: books[1]._id, // 1984
         status: "approved",
         requestDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
@@ -535,7 +488,7 @@ async function seed() {
         totalFine: 0,
       },
       {
-        user_id: users[3]._id, // Alice Brown
+        user_id: registeredUsers[3]._id, // Alice Brown
         book_id: books[2]._id, // The Great Gatsby
         status: "rejected",
         requestDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
@@ -545,7 +498,7 @@ async function seed() {
         rejectionReason: "Book already at maximum circulation",
       },
       {
-        user_id: users[4]._id, // Charlie Wilson
+        user_id: registeredUsers[4]._id, // Charlie Wilson
         book_id: books[4]._id, // The Catcher in the Rye
         status: "returned",
         requestDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
@@ -598,7 +551,7 @@ async function seed() {
     const finesData = [
       // Unpaid fines for John Doe
       {
-        user_id: users[0]._id,
+        user_id: registeredUsers[0]._id,
         issue_id: borrowMap[`fine_25`]?._id,
         amount: 25,
         status: "unpaid",
@@ -607,7 +560,7 @@ async function seed() {
         description: 'Late return fee for "1984"',
       },
       {
-        user_id: users[0]._id,
+        user_id: registeredUsers[0]._id,
         issue_id: borrowMap[`fine_50`]?._id,
         amount: 50,
         status: "unpaid",
@@ -616,9 +569,9 @@ async function seed() {
         description: 'Late return fee for "JavaScript: The Good Parts"',
       },
       {
-        user_id: users[0]._id,
+        user_id: registeredUsers[0]._id,
         issue_id:
-          borrowMap[`${users[0]._id.toString()}_${books[4]._id.toString()}`]
+          borrowMap[`${registeredUsers[0]._id.toString()}_${books[4]._id.toString()}`]
             ?._id,
         amount: 25,
         status: "paid",
@@ -627,9 +580,9 @@ async function seed() {
         description: 'Late return fee for "The Catcher in the Rye"',
       },
       {
-        user_id: users[4]._id,
+        user_id: registeredUsers[4]._id,
         issue_id:
-          borrowMap[`${users[4]._id.toString()}_${books[4]._id.toString()}`]
+          borrowMap[`${registeredUsers[4]._id.toString()}_${books[4]._id.toString()}`]
             ?._id,
         amount: 25,
         status: "paid",
@@ -666,7 +619,7 @@ async function seed() {
     const notificationsData = [
       // Due soon notifications
       {
-        user_id: users[0]._id,
+        user_id: registeredUsers[0]._id,
         message:
           'Your book "Dune" is due in 2 days. Please return or renew it.',
         type: "due",
@@ -674,7 +627,7 @@ async function seed() {
         createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
       },
       {
-        user_id: users[0]._id,
+        user_id: registeredUsers[0]._id,
         message: 'Your book "To Kill a Mockingbird" is due in 10 days.',
         type: "due",
         is_read: false,
@@ -682,7 +635,7 @@ async function seed() {
       },
       // Overdue notifications
       {
-        user_id: users[0]._id,
+        user_id: registeredUsers[0]._id,
         message:
           'Your book "1984" is overdue! Fine: $25. Please return immediately.',
         type: "overdue",
@@ -690,7 +643,7 @@ async function seed() {
         createdAt: new Date(Date.now() - 12 * 60 * 60 * 1000),
       },
       {
-        user_id: users[0]._id,
+        user_id: registeredUsers[0]._id,
         message:
           'Your book "JavaScript: The Good Parts" is overdue! Fine: $50. Please return immediately.',
         type: "overdue",
@@ -699,7 +652,7 @@ async function seed() {
       },
       // Approval notifications
       {
-        user_id: users[0]._id,
+        user_id: registeredUsers[0]._id,
         message:
           'Your request for "Clean Code" has been approved! You can collect it from the library.',
         type: "approval",
@@ -708,14 +661,14 @@ async function seed() {
       },
       // Admin notifications
       {
-        user_id: users[0]._id,
+        user_id: registeredUsers[0]._id,
         message: "Library will be closed on Sunday for maintenance work.",
         type: "admin",
         is_read: false,
         createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
       },
       {
-        user_id: users[0]._id,
+        user_id: registeredUsers[0]._id,
         message: "New books have been added to the Programming section!",
         type: "admin",
         is_read: true,
@@ -723,7 +676,7 @@ async function seed() {
       },
       // Payment notifications
       {
-        user_id: users[0]._id,
+        user_id: registeredUsers[0]._id,
         message: "Your fine payment of $25 has been processed successfully.",
         type: "payment",
         is_read: true,
@@ -731,7 +684,7 @@ async function seed() {
       },
       // General notifications
       {
-        user_id: users[0]._id,
+        user_id: registeredUsers[0]._id,
         message: "Welcome to the Digital Library System!",
         type: "general",
         is_read: true,
@@ -757,7 +710,7 @@ async function seed() {
     // Insert announcements from seed2.js (sent to all users)
     for (const notifData of notificationsDataFromSeed2) {
       try {
-        const notifications = users.map((user) => ({
+        const notifications = registeredUsers.map((user) => ({
           user_id: user._id,
           title: notifData.title,
           message: notifData.message,
@@ -770,7 +723,7 @@ async function seed() {
         const savedNotifs = await Notification.insertMany(notifications);
         notifications.push(...savedNotifs);
         console.log(
-          `Inserted announcement: ${notifData.title} (sent to ${users.length} users)`
+          `Inserted announcement: ${notifData.title} (sent to ${registeredUsers.length} users)`
         );
       } catch (error) {
         console.error(`Error inserting announcement:`, error.message);
@@ -785,7 +738,7 @@ async function seed() {
     const paymentsData = [
       // Recent payments
       {
-        user_id: users[0]._id,
+        user_id: registeredUsers[0]._id,
         amount: 25,
         method: "upi",
         status: "paid",
@@ -794,7 +747,7 @@ async function seed() {
         created_at: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000), // 25 days ago
       },
       {
-        user_id: users[0]._id,
+        user_id: registeredUsers[0]._id,
         amount: 10,
         method: "card",
         status: "paid",
@@ -804,7 +757,7 @@ async function seed() {
       },
       // Pending payment
       {
-        user_id: users[0]._id,
+        user_id: registeredUsers[0]._id,
         amount: 75, // Combined fine for current overdue books
         method: "upi",
         status: "pending",
@@ -814,7 +767,7 @@ async function seed() {
       },
       // Failed payment
       {
-        user_id: users[0]._id,
+        user_id: registeredUsers[0]._id,
         amount: 20,
         method: "card",
         status: "failed",
@@ -824,7 +777,7 @@ async function seed() {
       },
       // Other users' payments
       {
-        user_id: users[1]._id,
+        user_id: registeredUsers[1]._id,
         amount: 15,
         method: "cash",
         status: "paid",
@@ -833,7 +786,7 @@ async function seed() {
         created_at: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
       },
       {
-        user_id: users[4]._id,
+        user_id: registeredUsers[4]._id,
         amount: 25,
         method: "cash",
         status: "paid",
@@ -860,7 +813,7 @@ async function seed() {
     // Add some random payment records from seed2.js
     for (let i = 0; i < 5; i++) {
       try {
-        const randomUser = users[Math.floor(Math.random() * users.length)];
+        const randomUser = registeredUsers[Math.floor(Math.random() * registeredUsers.length)];
         const fineAmount = [5, 10, 15, 20, 25][Math.floor(Math.random() * 5)];
 
         const payment = new Payment({
@@ -889,13 +842,13 @@ async function seed() {
 
     // Summary
     console.log("\n=== SEED SUMMARY ===");
-    console.log(`✓ Users: ${users.length}`);
+    console.log(`✓ Users: ${registeredUsers.length}`);
     console.log(`✓ Books: ${books.length}`);
     console.log(`✓ Borrows: ${borrows.length}`);
     console.log(`✓ Fines: ${fines.length}`);
     console.log(`✓ Notifications: ${notifications.length}`);
     console.log(`✓ Payments: ${payments.length}`);
-    console.log(`✓ Feedback: ${feedbacks.length}`);
+    console.log(`✓ Queries: ${queries.length}`);
     console.log("===================\n");
 
     // Test data summary for John Doe (user@example.com)

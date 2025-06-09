@@ -1,4 +1,5 @@
 const express = require("express");
+const cookieParser = require('cookie-parser')
 require("dotenv").config();
 const mongoose = require("mongoose");
 const passport = require('./config/passport');// const authRoutes = require('./routes/authRoutes');
@@ -9,7 +10,9 @@ const app = express();
 // const topBooks = require('./routes/topBookRouter')
 const User = require("./routes/userRoute");
 const router = require("./routes/auth");
-const Lib = require("./routes/librarian")
+const Librarian = require("./routes/librarian")
+const Admin = require("./routes/admin")
+const cors = require("cors");
 // const User = require('./models/User');
 // MongoDB connection
 const DB = process.env.MONGODB;
@@ -18,8 +21,15 @@ mongoose
   .then(() => console.log(" MongoDB connected"))
   .catch((err) => console.error(" MongoDB connection error:", err));
 
+
 // Middleware
+app.use(cors({
+  origin: "http://localhost:5173", // Change to your frontend domain
+  credentials: true,
+}));
 app.use(express.json());
+app.use(cookieParser());
+
 
 // Passport initialization
 app.use(passport.initialize());
@@ -27,8 +37,9 @@ app.use(passport.initialize());
 const PORT = process.env.PORT || 5000;
 app.use("/auth", router);
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-app.use("/user", User);
-app.use("/", Lib)
+app.use("/api", User);
+app.use("/api", Librarian);
+app.use("/api", Admin);
 // Catch all error
 app.use((err, req, res, next) => {
   const statusCode = err.statusCode || 500;

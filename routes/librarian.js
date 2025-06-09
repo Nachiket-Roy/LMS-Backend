@@ -3,7 +3,7 @@ const router = express.Router();
 const passport = require('passport');
 const librarianController = require('../controllers/librarianController');
 const { authorizeRoles } = require('../middlwares/authorizeRoles');
-const multer = require("../routes/books")
+
 // Auth + Role middleware
 const auth = passport.authenticate('jwt', { session: false });
 // ===================
@@ -37,7 +37,7 @@ router.patch('/renewal-requests/:id/process', auth, authorizeRoles('librarian', 
 // ===================
 
 // Get all books
-router.get('/books', auth, authorizeRoles('librarian', 'admin'), librarianController.getAllBooks);
+router.get('/books', auth, authorizeRoles('librarian', 'admin', 'user'), librarianController.getAllBooks);
 
 // Get single book details
 router.get('/books/:id', auth, authorizeRoles('librarian', 'admin'), librarianController.getBookDetails);

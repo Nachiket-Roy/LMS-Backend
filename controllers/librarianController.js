@@ -3,7 +3,6 @@ const Book = require("../models/Book");
 const Borrow = require("../models/Borrow");
 const Notification = require("../models/Notification");
 const Payment = require("../models/Payment");
-const Feedback = require("../models/Feedback"); // Assuming you have this model
 const catchAsync = require("../utils/catchAsync");
 const Query = require("../models/Query");
 
@@ -28,7 +27,7 @@ exports.getAllQueries = catchAsync(async (req, res) => {
     .skip(skip)
     .limit(parseInt(limit));
 
-  const total = await Feedback.countDocuments(query);
+  const total = await Query.countDocuments(query);
 
   res.status(200).json({
     success: true,
@@ -617,7 +616,7 @@ exports.getLibrarianDashboard = catchAsync(async (req, res) => {
     }),
     Borrow.countDocuments({ status: "pending" }),
     Payment.aggregate([{ $group: { _id: null, total: { $sum: "$amount" } } }]),
-    Feedback.countDocuments({ status: { $in: ["open", "in_progress"] } }),
+    Query.countDocuments({ status: { $in: ["open", "in_progress"] } }),
     Borrow.countDocuments({
       status: "returned",
       returnDate: {

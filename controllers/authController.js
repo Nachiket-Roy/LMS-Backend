@@ -1,20 +1,45 @@
-const User = require('../models/User');
-const jwt = require('jsonwebtoken');
-const catchAsync = require('../utils/catchAsync');
+const User = require("../models/User");
+const jwt = require("jsonwebtoken");
+const catchAsync = require("../utils/catchAsync");
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
-const ACCESS_EXPIRES_IN = '1d';
-const REFRESH_EXPIRES_IN = '7d';
+const ACCESS_EXPIRES_IN = "1d";
+const REFRESH_EXPIRES_IN = "7d";
 
+// Helper function to get consistent cookie options
+const getCookieOptions = (maxAgeMs) => {
+  const isProduction = process.env.NODE_ENV === "production";
+  return {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? "None" : "Lax",
+    maxAge: maxAgeMs,
+  };
+};
+
+// Enhanced login with better cookie settings
 exports.login = catchAsync(async (req, res) => {
   const { email, password } = req.body;
 
-  const user = await User.findOne({ email });
-  if (!user) return res.status(401).json({ message: 'Invalid email or password' });
+  if (!email || !password) {
+    return res.status(400).json({ message: "Email and password are required" });
+  }
 
-  const isValid = await user.authenticate(password);
-  if (!isValid) return res.status(401).json({ message: 'Invalid email or password' });
+  // Use passport-local-mongoose's model-level authenticate
+  const { user, error } = await new Promise((resolve) => {
+    User.authenticate()(email, password, (err, user, info) => {
+      if (err || !user) {
+        resolve({ user: null, error: info?.message || "Invalid credentials" });
+      } else {
+        resolve({ user, error: null });
+      }
+    });
+  });
+
+  if (error) {
+    return res.status(401).json({ message: error });
+  }
 
   // Clean up expired tokens before creating new ones
   await user.removeExpiredTokens();
@@ -23,24 +48,33 @@ exports.login = catchAsync(async (req, res) => {
     expiresIn: ACCESS_EXPIRES_IN,
   });
 
-  const refreshToken = jwt.sign({ id: user._id, role: user.role }, JWT_REFRESH_SECRET, {
-    expiresIn: REFRESH_EXPIRES_IN,
-  });
+  const refreshToken = jwt.sign(
+    { id: user._id, role: user.role },
+    JWT_REFRESH_SECRET,
+    { expiresIn: REFRESH_EXPIRES_IN }
+  );
 
-  // Save refresh token to user document
   await user.addRefreshToken(refreshToken);
 
-  res.json({
-    message: 'Login successful',
-    accessToken,
-    refreshToken,
-    redirectTo:
-      user.role === 'admin'
-        ? `/dashboard/${user._id}`
-        : user.role === 'librarian'
-        ? `/dashboard/${user._id}`
-        : `/dashboard/user/${user._id}`,
-  });
+  // Set cookies with appropriate expiry times
+  res
+    .cookie("accessToken", accessToken, getCookieOptions(24 * 60 * 60 * 1000)) // 1 day
+    .cookie("refreshToken", refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000)) // 7 days
+    .json({
+      message: "Login successful",
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+      redirectTo:
+        user.role === "admin"
+          ? `/admin`
+          : user.role === "librarian"
+          ? `/librarian`
+          : `/user`,
+    });
 });
 
 // SECURED: Only admins can set custom roles during registration
@@ -48,45 +82,47 @@ exports.register = catchAsync(async (req, res) => {
   const { name, email, password, role } = req.body;
 
   if (!name || !email || !password) {
-    return res.status(400).json({ message: 'Name, email and password are required' });
+    return res
+      .status(400)
+      .json({ message: "Name, email and password are required" });
   }
 
   const existingUser = await User.findOne({ email });
   if (existingUser) {
-    return res.status(409).json({ message: 'Email already registered' });
+    return res.status(409).json({ message: "Email already registered" });
   }
 
   // SECURITY: Only allow role setting if requester is an authenticated admin
-  let userRole = 'user'; // Default role for all new users
-  
-  if (role && req.user && req.user.role === 'admin') {
+  let userRole = "user"; // Default role for all new users
+
+  if (role && req.user && req.user.role === "admin") {
     // Validate the role being set
-    const validRoles = ['user', 'librarian', 'admin'];
+    const validRoles = ["user", "librarian", "admin"];
     if (validRoles.includes(role)) {
       userRole = role;
     } else {
-      return res.status(400).json({ 
-        message: 'Invalid role. Must be one of: ' + validRoles.join(', ') 
+      return res.status(400).json({
+        message: "Invalid role. Must be one of: " + validRoles.join(", "),
       });
     }
-  } else if (role && (!req.user || req.user.role !== 'admin')) {
+  } else if (role && (!req.user || req.user.role !== "admin")) {
     // If role is provided but user is not admin, reject the request
-    return res.status(403).json({ 
-      message: 'Forbidden: Only admins can assign custom roles' 
+    return res.status(403).json({
+      message: "Forbidden: Only admins can assign custom roles",
     });
   }
 
   const newUser = new User({ name, email, role: userRole });
   await User.register(newUser, password);
 
-  res.status(201).json({ 
-    message: 'User registered successfully',
+  res.status(201).json({
+    message: "User registered successfully",
     user: {
       id: newUser._id,
       name: newUser.name,
       email: newUser.email,
-      role: newUser.role
-    }
+      role: newUser.role,
+    },
   });
 });
 
@@ -95,109 +131,159 @@ exports.publicRegister = catchAsync(async (req, res) => {
   const { name, email, password } = req.body;
 
   if (!name || !email || !password) {
-    return res.status(400).json({ message: 'Name, email and password are required' });
+    return res
+      .status(400)
+      .json({ message: "Name, email and password are required" });
   }
 
   const existingUser = await User.findOne({ email });
   if (existingUser) {
-    return res.status(409).json({ message: 'Email already registered' });
+    return res.status(409).json({ message: "Email already registered" });
   }
 
   // Always create as 'user' role for public registration
-  const newUser = new User({ name, email, role: 'user' });
+  const newUser = new User({ name, email, role: "user" });
   await User.register(newUser, password);
 
-  res.status(201).json({ 
-    message: 'User registered successfully',
+  res.status(201).json({
+    message: "User registered successfully",
     user: {
       id: newUser._id,
       name: newUser.name,
       email: newUser.email,
-      role: newUser.role
-    }
+      role: newUser.role,
+    },
   });
 });
 
 exports.refreshToken = catchAsync(async (req, res) => {
-  const { refreshToken } = req.body;
-  if (!refreshToken) return res.status(401).json({ message: 'Refresh token required' });
+  const { refreshToken } = req.cookies;
+
+  if (!refreshToken) {
+    return res.status(401).json({ message: "Refresh token required" });
+  }
 
   let payload;
   try {
     payload = jwt.verify(refreshToken, JWT_REFRESH_SECRET);
   } catch (err) {
-    return res.status(403).json({ message: 'Invalid refresh token' });
+    return res.status(403).json({ message: "Invalid refresh token" });
   }
 
   const user = await User.findById(payload.id);
-  if (!user) return res.status(401).json({ message: 'User not found' });
+  if (!user) {
+    return res.status(401).json({ message: "User not found" });
+  }
 
   // Clean up expired tokens before checking if the token exists
   await user.removeExpiredTokens();
 
   if (!user.hasRefreshToken(refreshToken)) {
-    return res.status(403).json({ message: 'Refresh token revoked' });
+    return res.status(403).json({ message: "Refresh token revoked" });
   }
 
   // Token is valid and exists: rotate it
   await user.removeRefreshToken(refreshToken); // Remove old
-  const newRefreshToken = jwt.sign({ id: user._id, role: user.role }, JWT_REFRESH_SECRET, {
-    expiresIn: REFRESH_EXPIRES_IN,
-  });
+  
+  const newRefreshToken = jwt.sign(
+    { id: user._id, role: user.role },
+    JWT_REFRESH_SECRET,
+    { expiresIn: REFRESH_EXPIRES_IN }
+  );
+  
+  const newAccessToken = jwt.sign(
+    { id: user._id, role: user.role },
+    JWT_SECRET,
+    { expiresIn: ACCESS_EXPIRES_IN }
+  );
+  
   await user.addRefreshToken(newRefreshToken); // Add new
-
-  const newAccessToken = jwt.sign({ id: user._id, role: user.role }, JWT_SECRET, {
-    expiresIn: ACCESS_EXPIRES_IN,
-  });
-
-  res.json({ accessToken: newAccessToken, refreshToken: newRefreshToken });
+  
+  // FIXED: Added proper response with correct cookie expiry times
+  res
+    .cookie("accessToken", newAccessToken, getCookieOptions(24 * 60 * 60 * 1000)) // 1 day
+    .cookie("refreshToken", newRefreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000)) // 7 days
+    .json({
+      message: "Tokens refreshed successfully",
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      }
+    });
 });
 
+// Improved logout with better error handling
 exports.logout = catchAsync(async (req, res) => {
-  const { refreshToken, allDevices } = req.body;
+  const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
+  const { allDevices = false } = req.body;
+
+  // Get consistent cookie clear options
+  const clearCookieOptions = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
+  };
 
   if (!refreshToken) {
-    return res.status(400).json({ message: 'Refresh token required' });
+    return res
+      .clearCookie("accessToken", clearCookieOptions)
+      .clearCookie("refreshToken", clearCookieOptions)
+      .json({ message: "No active session found" });
   }
 
   let payload;
   try {
     payload = jwt.verify(refreshToken, JWT_REFRESH_SECRET);
   } catch {
-    return res.json({ message: 'Logged out successfully' }); // Silent fail for invalid token
+    // Invalid token - still clear cookies and return success
+    return res
+      .clearCookie("accessToken", clearCookieOptions)
+      .clearCookie("refreshToken", clearCookieOptions)
+      .json({ message: "Logged out successfully" });
   }
 
   const user = await User.findById(payload.id);
   if (user) {
-    // Clean up expired tokens during logout
-    await user.removeExpiredTokens();
-    
-    if (allDevices) {
-      await user.clearAllRefreshTokens(); // Invalidate all sessions
-    } else {
-      await user.removeRefreshToken(refreshToken); // Only remove the one used
+    try {
+      // Clean up expired tokens during logout
+      await user.removeExpiredTokens();
+
+      if (allDevices) {
+        await user.clearAllRefreshTokens();
+      } else {
+        await user.removeRefreshToken(refreshToken);
+      }
+    } catch (error) {
+      console.error("Error cleaning up tokens:", error);
+      // Continue with logout even if cleanup fails
     }
   }
 
-  res.json({ message: 'Logged out successfully' });
+  res
+    .clearCookie("accessToken", clearCookieOptions)
+    .clearCookie("refreshToken", clearCookieOptions)
+    .json({ message: "Logged out successfully" });
 });
 
-// Optional: Periodic cleanup endpoint (call this from a cron job)
-exports.cleanupAllExpiredTokens = catchAsync(async (req, res) => {
-  // This should be called periodically (e.g., daily) to clean up all users
-  const users = await User.find({ 'refreshTokens.0': { $exists: true } }); // Only users with tokens
-  
-  let cleanedCount = 0;
-  for (const user of users) {
-    const originalCount = user.refreshTokens.length;
-    await user.removeExpiredTokens();
-    if (user.refreshTokens.length < originalCount) {
-      cleanedCount++;
-    }
+// Get current authenticated user info
+exports.getMe = catchAsync(async (req, res) => {
+  const user = await User.findById(req.user.id).select(
+    "-password -refreshTokens"
+  );
+
+  if (!user) {
+    return res.status(404).json({ message: "User not found" });
   }
 
-  res.json({ 
-    message: `Cleanup completed. Cleaned tokens from ${cleanedCount} users.`,
-    usersProcessed: users.length 
+  res.json({
+    user: {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      createdAt: user.createdAt,
+    },
   });
 });
