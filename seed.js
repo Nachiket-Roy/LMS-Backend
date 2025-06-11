@@ -311,7 +311,8 @@ async function seed() {
           ...bookInfo,
           // Add addedBy field from seed2.js concept
           addedBy:
-            registeredUsers.find((u) => u.role === "librarian")?._id || registeredUsers[0]._id,
+            registeredUsers.find((u) => u.role === "librarian")?._id ||
+            registeredUsers[0]._id,
         });
         const savedBook = await book.save();
         books.push(savedBook);
@@ -549,52 +550,61 @@ async function seed() {
 
     // Create fine records
     const finesData = [
-      // Unpaid fines for John Doe
       {
         user_id: registeredUsers[0]._id,
-        issue_id: borrowMap[`fine_25`]?._id,
+        borrow_id: borrowMap[`fine_25`]?._id,
+        book_id: books[0]._id, // Assuming "1984"
         amount: 25,
+        daysOverdue: 5, // ₹5 × 5 days
         status: "unpaid",
-        payment_date: null,
-        payment_mode: null,
+        paymentDate: null,
+        paymentMethod: null,
         description: 'Late return fee for "1984"',
       },
       {
         user_id: registeredUsers[0]._id,
-        issue_id: borrowMap[`fine_50`]?._id,
+        borrow_id: borrowMap[`fine_50`]?._id,
+        book_id: books[1]._id, // Assuming "JavaScript: The Good Parts"
         amount: 50,
+        daysOverdue: 10,
         status: "unpaid",
-        payment_date: null,
-        payment_mode: null,
+        paymentDate: null,
+        paymentMethod: null,
         description: 'Late return fee for "JavaScript: The Good Parts"',
       },
       {
         user_id: registeredUsers[0]._id,
-        issue_id:
-          borrowMap[`${registeredUsers[0]._id.toString()}_${books[4]._id.toString()}`]
-            ?._id,
+        borrow_id:
+          borrowMap[
+            `${registeredUsers[0]._id.toString()}_${books[4]._id.toString()}`
+          ]?._id,
+        book_id: books[4]._id, // "The Catcher in the Rye"
         amount: 25,
+        daysOverdue: 5,
         status: "paid",
-        payment_date: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000),
-        payment_mode: "upi",
+        paymentDate: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000),
+        paymentMethod: "upi",
         description: 'Late return fee for "The Catcher in the Rye"',
       },
       {
         user_id: registeredUsers[4]._id,
-        issue_id:
-          borrowMap[`${registeredUsers[4]._id.toString()}_${books[4]._id.toString()}`]
-            ?._id,
+        borrow_id:
+          borrowMap[
+            `${registeredUsers[4]._id.toString()}_${books[4]._id.toString()}`
+          ]?._id,
+        book_id: books[4]._id,
         amount: 25,
+        daysOverdue: 5,
         status: "paid",
-        payment_date: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
-        payment_mode: "cash",
+        paymentDate: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
+        paymentMethod: "cash",
         description: "Late return fee",
       },
     ];
 
     const fines = [];
     for (const fineData of finesData) {
-      if (fineData.issue_id) {
+      if (fineData.borrow_id) {
         try {
           const fine = new Fine(fineData);
           const savedFine = await fine.save();
@@ -637,7 +647,7 @@ async function seed() {
       {
         user_id: registeredUsers[0]._id,
         message:
-          'Your book "1984" is overdue! Fine: $25. Please return immediately.',
+          'Your book "1984" is overdue! Fine: ₹25. Please return immediately.',
         type: "overdue",
         is_read: false,
         createdAt: new Date(Date.now() - 12 * 60 * 60 * 1000),
@@ -645,7 +655,7 @@ async function seed() {
       {
         user_id: registeredUsers[0]._id,
         message:
-          'Your book "JavaScript: The Good Parts" is overdue! Fine: $50. Please return immediately.',
+          'Your book "JavaScript: The Good Parts" is overdue! Fine: ₹50. Please return immediately.',
         type: "overdue",
         is_read: false,
         createdAt: new Date(Date.now() - 6 * 60 * 60 * 1000),
@@ -677,7 +687,7 @@ async function seed() {
       // Payment notifications
       {
         user_id: registeredUsers[0]._id,
-        message: "Your fine payment of $25 has been processed successfully.",
+        message: "Your fine payment of ₹25 has been processed successfully.",
         type: "payment",
         is_read: true,
         createdAt: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000),
@@ -813,7 +823,8 @@ async function seed() {
     // Add some random payment records from seed2.js
     for (let i = 0; i < 5; i++) {
       try {
-        const randomUser = registeredUsers[Math.floor(Math.random() * registeredUsers.length)];
+        const randomUser =
+          registeredUsers[Math.floor(Math.random() * registeredUsers.length)];
         const fineAmount = [5, 10, 15, 20, 25][Math.floor(Math.random() * 5)];
 
         const payment = new Payment({
@@ -831,7 +842,7 @@ async function seed() {
         const savedPayment = await payment.save();
         payments.push(savedPayment);
         console.log(
-          `Inserted random payment: $${fineAmount} fine for ${randomUser.name}`
+          `Inserted random payment: ₹${fineAmount} fine for ${randomUser.name}`
         );
       } catch (error) {
         console.error(`Error inserting random payment:`, error.message);
@@ -861,7 +872,7 @@ async function seed() {
     console.log("Pending Requests: 1 book");
     console.log("Notifications: Multiple notifications (mix of read/unread)");
     console.log("Payment History: Multiple payments (paid/pending/failed)");
-    console.log("Outstanding Fines: $75 (from 2 overdue books)");
+    console.log("Outstanding Fines: ₹75 (from 2 overdue books)");
     console.log("===============================================\n");
 
     console.log("Seed data inserted successfully!");

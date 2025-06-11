@@ -37,9 +37,9 @@ app.use(passport.initialize());
 const PORT = process.env.PORT || 5000;
 app.use("/auth", router);
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-app.use("/api", User);
-app.use("/api", Librarian);
-app.use("/api", Admin);
+app.use("/api/user", User);
+app.use("/api/librarian", Librarian);
+app.use("/api/admin", Admin);
 // Catch all error
 app.use((err, req, res, next) => {
   const statusCode = err.statusCode || 500;
@@ -47,9 +47,6 @@ app.use((err, req, res, next) => {
   res.status(statusCode).json({ error: message });
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-});
 // app.post('/login', passport.authenticate('local'), (req, res) => {
 //   const role = req.user.role;
 
@@ -69,3 +66,29 @@ app.listen(PORT, () => {
 // app.get('/dashboard/admin', requireRole('admin'), (req, res) => {
 //   res.send('Welcome to Admin Dashboard');
 // });
+const cron = require('node-cron');
+const { performOverdueFineUpdate } = require("./services/fineService"); // adjust path
+
+cron.schedule('0 2 * * *', async () => {
+  console.log("⏰ Running daily overdue fine update...");
+
+  try {
+    const updated = await performOverdueFineUpdate();
+    console.log(`✅ ${updated} overdue fine(s) updated via cron job.`);
+  } catch (err) {
+    console.error("❌ Cron job failed:", err.message);
+  }
+});
+// catch multer errors
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError || err.message.includes("Only image files")) {
+    return res.status(400).json({ error: "Invalid file upload: " + err.message });
+  }
+  next(err); // let other errors continue
+});
+
+
+
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
+});

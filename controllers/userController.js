@@ -5,7 +5,9 @@ const Notification = require("../models/Notification");
 const Payment = require("../models/Payment");
 const Fine = require("../models/Fine");
 const catchAsync = require("../utils/catchAsync");
-const Query = require("../models/Query")
+const Query = require("../models/Query");
+const { performOverdueFineUpdate } = require('../services/fineService');
+
 
 // 1. Borrow Requests (pending/approved/rejected)
 exports.getBorrowRequests = catchAsync(async (req, res) => {
@@ -102,7 +104,7 @@ exports.latestDueNotification = catchAsync(async (req, res) => {
 
   const dueBorrows = await Borrow.find({
     user_id: req.user._id,
-    status: { $in: ["approved", "issued", "renewed"] },
+    status: { $in: ["approved", "borrowed", "renewed"] }, // not "issued"
     dueDate: {
       $gte: new Date(),
       $lte: nextWeek,
@@ -139,6 +141,27 @@ exports.getNotifications = catchAsync(async (req, res) => {
     data: notifs,
   });
 });
+// View a specific notification by ID (only if it belongs to the user)
+// exports.getNotificationById = catchAsync(async (req, res) => {
+//   const { id } = req.params;
+
+//   const notification = await Notification.findOne({
+//     _id: id,
+//     user_id: req.user._id,
+//   });
+
+//   if (!notification) {
+//     return res.status(404).json({
+//       success: false,
+//       message: "Notification not found",
+//     });
+//   }
+
+//   res.status(200).json({
+//     success: true,
+//     data: notification,
+//   });
+// });
 
 // 5. Payment History + Total Fine
 exports.getPaymentHistory = catchAsync(async (req, res) => {
@@ -317,7 +340,8 @@ exports.deleteAccount = catchAsync(async (req, res) => {
   if (activeBorrows > 0) {
     return res.status(400).json({
       success: false,
-      message: "Cannot delete account with active book borrows. Please return all books first.",
+      message:
+        "Cannot delete account with active book borrows. Please return all books first.",
     });
   }
 
@@ -330,7 +354,8 @@ exports.deleteAccount = catchAsync(async (req, res) => {
   if (outstandingFines > 0) {
     return res.status(400).json({
       success: false,
-      message: "Cannot delete account with outstanding fines. Please clear all dues first.",
+      message:
+        "Cannot delete account with outstanding fines. Please clear all dues first.",
     });
   }
 
@@ -519,7 +544,7 @@ exports.getUnreadCount = catchAsync(async (req, res) => {
 });
 
 // 16. Submit feedback/query
-exports.submitFeedback = catchAsync(async (req, res) => {
+exports.submitQuery = catchAsync(async (req, res) => {
   const { type, subject, message, priority = "low" } = req.body;
 
   // Validate required fields
@@ -535,7 +560,8 @@ exports.submitFeedback = catchAsync(async (req, res) => {
   if (!validTypes.includes(type)) {
     return res.status(400).json({
       success: false,
-      message: "Invalid feedback type. Must be one of: " + validTypes.join(", "),
+      message:
+        "Invalid feedback type. Must be one of: " + validTypes.join(", "),
     });
   }
 
@@ -544,7 +570,8 @@ exports.submitFeedback = catchAsync(async (req, res) => {
   if (!validPriorities.includes(priority)) {
     return res.status(400).json({
       success: false,
-      message: "Invalid priority. Must be one of: " + validPriorities.join(", "),
+      message:
+        "Invalid priority. Must be one of: " + validPriorities.join(", "),
     });
   }
 
@@ -588,7 +615,7 @@ exports.getUserQueries = catchAsync(async (req, res) => {
 
   // Build query object for user's queries only
   const query = { user_id: req.user._id };
-  
+
   // Add optional filters
   if (status) query.status = status;
   if (type) query.type = type;
@@ -597,9 +624,9 @@ exports.getUserQueries = catchAsync(async (req, res) => {
   // Add search functionality
   if (search && search.trim()) {
     query.$or = [
-      { subject: { $regex: search.trim(), $options: 'i' } },
-      { message: { $regex: search.trim(), $options: 'i' } },
-      { response: { $regex: search.trim(), $options: 'i' } }
+      { subject: { $regex: search.trim(), $options: "i" } },
+      { message: { $regex: search.trim(), $options: "i" } },
+      { response: { $regex: search.trim(), $options: "i" } },
     ];
   }
 
@@ -627,19 +654,19 @@ exports.getUserQueryById = catchAsync(async (req, res) => {
 
   const query = await Query.findOne({
     _id: id,
-    user_id: req.user._id
-  }).populate('resolvedBy', 'name email');
+    user_id: req.user._id,
+  }).populate("resolvedBy", "name email");
 
   if (!query) {
     return res.status(404).json({
       success: false,
-      message: "Query not found"
+      message: "Query not found",
     });
   }
 
   res.status(200).json({
     success: true,
-    data: query
+    data: query,
   });
 });
 
@@ -649,21 +676,21 @@ exports.deleteUserQuery = catchAsync(async (req, res) => {
 
   const query = await Query.findOne({
     _id: id,
-    user_id: req.user._id
+    user_id: req.user._id,
   });
 
   if (!query) {
     return res.status(404).json({
       success: false,
-      message: "Query not found"
+      message: "Query not found",
     });
   }
 
   // Only allow deletion of open queries
-  if (query.status !== 'open') {
+  if (query.status !== "open") {
     return res.status(400).json({
       success: false,
-      message: "Only open queries can be deleted"
+      message: "Only open queries can be deleted",
     });
   }
 
@@ -671,6 +698,14 @@ exports.deleteUserQuery = catchAsync(async (req, res) => {
 
   res.status(200).json({
     success: true,
-    message: "Query deleted successfully"
+    message: "Query deleted successfully",
+  });
+});
+exports.updateOverdueFines = catchAsync(async (req, res) => {
+  const updated = await performOverdueFineUpdate();
+
+  res.status(200).json({
+    success: true,
+    message: `${updated} overdue fine(s) updated.`,
   });
 });

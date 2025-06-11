@@ -6,15 +6,26 @@ const fineSchema = new mongoose.Schema({
     ref: 'User', 
     required: true 
   },
-  issue_id: { 
+  borrow_id: { 
     type: mongoose.Schema.Types.ObjectId, 
     ref: 'Borrow', 
+    required: true,
+    unique: true
+  },
+  book_id: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Book', 
     required: true 
   },
   amount: { 
     type: Number, 
     required: true,
     min: 0
+  },
+  daysOverdue: {
+    type: Number,
+    required: true,
+    min: 1
   },
   status: { 
     type: String, 
@@ -41,6 +52,5 @@ const fineSchema = new mongoose.Schema({
 
 // Index for faster queries
 fineSchema.index({ user_id: 1, status: 1 });
-fineSchema.index({ borrow: 1 });
 
 module.exports = mongoose.model('Fine', fineSchema);

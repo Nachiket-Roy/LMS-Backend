@@ -109,7 +109,7 @@ borrowSchema.index({ user_id: 1, createdAt: -1 });
 // Virtual fields
 borrowSchema.virtual("isOverdue").get(function () {
   return (
-    ["approved", "issued", "renewed"].includes(this.status) &&
+    ["approved", "borrowed", "renewed"].includes(this.status) && // Changed from "issued" to "borrowed"
     this.dueDate &&
     this.dueDate < new Date()
   );
@@ -178,7 +178,7 @@ borrowSchema.methods.renew = function (additionalDays = 14) {
 // FIXED: Static methods with correct field names
 borrowSchema.statics.findOverdue = function () {
   return this.find({
-    status: { $in: ["approved", "issued", "renewed"] },
+    status: { $in: ["approved", "borrowed", "renewed"] }, // Changed from "issued" to "borrowed"
     dueDate: { $lt: new Date() },
   });
 };

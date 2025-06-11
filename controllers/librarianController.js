@@ -76,14 +76,15 @@ exports.updateQueryStatus = catchAsync(async (req, res) => {
 
   const updateData = {
     status,
-    updatedAt: new Date(),
     resolvedBy: req.user._id, // Librarian who resolved it
   };
 
   if (response) updateData.response = response.trim();
   if (notes) updateData.notes = notes.trim();
+
+  // ✅ Set resolvedAt only if resolved or closed
   if (status === "resolved" || status === "closed") {
-    updateData.updatedAt = new Date();
+    updateData.resolvedAt = new Date();
   }
 
   const updatedQuery = await Query.findByIdAndUpdate(id, updateData, {
@@ -98,7 +99,7 @@ exports.updateQueryStatus = catchAsync(async (req, res) => {
     });
   }
 
-  // Send notification to user if query is resolved
+  // ✅ Send notification if resolved
   if (status === "resolved" && response) {
     await Notification.create({
       user_id: updatedQuery.user_id._id,
@@ -115,6 +116,7 @@ exports.updateQueryStatus = catchAsync(async (req, res) => {
   });
 });
 
+
 // ===================
 // BORROW MANAGEMENT
 // ===================
@@ -129,7 +131,7 @@ exports.getAllBorrowRequests = catchAsync(async (req, res) => {
 
   const requests = await Borrow.find(query)
     .populate("user_id", "name email contact")
-    .populate("book_id", "title author ")
+    .populate("book_id", "title author")
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(parseInt(limit));
@@ -150,15 +152,25 @@ exports.getAllBorrowRequests = catchAsync(async (req, res) => {
 exports.updateBorrowStatus = catchAsync(async (req, res) => {
   const { id } = req.params;
   const { status, notes, dueDate, returnDate } = req.body;
+  if (!req.user || !req.user._id) {
+    console.error("❌ req.user is missing");
+    return res.status(401).json({
+      success: false,
+      message: "Unauthorized: Missing user info",
+    });
+  }
 
+  // Fixed: Use correct status values from your schema
   const validStatuses = [
-    "pending",
+    "requested",
     "approved",
     "rejected",
-    "issued",
+    "borrowed", // instead of "issued"
     "returned",
-    "overdue",
+    "renewed",
+    "renew_requested",
   ];
+
   if (!validStatuses.includes(status)) {
     return res.status(400).json({
       success: false,
@@ -177,7 +189,7 @@ exports.updateBorrowStatus = catchAsync(async (req, res) => {
   const updateData = {
     status,
     updatedAt: new Date(),
-    processedBy: req.user._id, // Librarian who processed it
+    processedBy: req.user._id,
   };
 
   if (notes) updateData.notes = notes.trim();
@@ -186,25 +198,31 @@ exports.updateBorrowStatus = catchAsync(async (req, res) => {
   switch (status) {
     case "approved":
       updateData.approvedAt = new Date();
+      updateData.issueDate = new Date(); // Set issue date when approved
       if (dueDate) updateData.dueDate = new Date(dueDate);
+      else {
+        // Set default due date (14 days from now)
+        updateData.dueDate = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+      }
       break;
-    case "issued":
-      updateData.issuedAt = new Date();
+    case "borrowed": // instead of "issued"
+      updateData.issueDate = new Date();
       if (dueDate) updateData.dueDate = new Date(dueDate);
       // Decrease book quantity
       await Book.findByIdAndUpdate(borrow.book_id._id, {
-        $inc: { availableQuantity: -1 },
+        $inc: { availableCopies: -1 },
       });
       break;
     case "returned":
       updateData.returnDate = returnDate ? new Date(returnDate) : new Date();
       // Increase book quantity
       await Book.findByIdAndUpdate(borrow.book_id._id, {
-        $inc: { availableQuantity: 1 },
+        $inc: { availableCopies: 1 },
       });
       break;
     case "rejected":
       updateData.rejectedAt = new Date();
+      if (notes) updateData.rejectionReason = notes.trim();
       break;
   }
 
@@ -217,18 +235,32 @@ exports.updateBorrowStatus = catchAsync(async (req, res) => {
   const notificationMessages = {
     approved: "Your book request has been approved",
     rejected: "Your book request has been rejected",
-    issued: "Your book has been issued successfully",
+    borrowed: "Your book has been issued successfully",
     returned: "Book return confirmed",
   };
+  if (!borrow.book_id || !borrow.book_id.title) {
+    console.error("❌ book_id missing or not populated");
+  }
+  console.log("🟢 Update data:", updateData);
+  console.log("📦 Borrow.user_id:", borrow.user_id);
+  console.log("📖 Borrow.book_id:", borrow.book_id);
 
-  if (notificationMessages[status]) {
+  // Send notification to user
+if (notificationMessages[status]) {
+  try {
     await Notification.create({
       user_id: borrow.user_id._id,
       title: "Book Request Update",
       message: `${notificationMessages[status]}: "${borrow.book_id.title}"`,
       type: "borrow_update",
+      sentBy: req.user._id, // optional
     });
+  } catch (notifError) {
+    console.error("❌ Failed to send notification:", notifError.message);
+    // Don't crash the request — let it continue
   }
+}
+
 
   res.status(200).json({
     success: true,
@@ -237,10 +269,9 @@ exports.updateBorrowStatus = catchAsync(async (req, res) => {
   });
 });
 
-// 6. Process renewal requests
 exports.processRenewalRequest = catchAsync(async (req, res) => {
   const { id } = req.params;
-  const { action, newDueDate, notes } = req.body; // action: 'approve' or 'reject'
+  const { action, newDueDate, notes } = req.body;
 
   if (!["approve", "reject"].includes(action)) {
     return res.status(400).json({
@@ -268,10 +299,10 @@ exports.processRenewalRequest = catchAsync(async (req, res) => {
     updateData.status = "renewed";
     updateData.dueDate = newDueDate
       ? new Date(newDueDate)
-      : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000); // 14 days from now
-    updateData.renewalCount = (borrow.renewalCount || 0) + 1;
+      : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+    updateData.renewCount = (borrow.renewCount || 0) + 1;
   } else {
-    updateData.status = borrow.previousStatus || "issued"; // Revert to previous status
+    updateData.status = borrow.previousStatus || "approved"; // Revert to previous status
     updateData.renewalRequestDate = null;
   }
 
@@ -320,8 +351,8 @@ exports.getAllBooks = catchAsync(async (req, res) => {
   }
   if (category) query.category = category;
   if (author) query.author = { $regex: author, $options: "i" };
-  if (availability === "available") query.availableQuantity = { $gt: 0 };
-  if (availability === "unavailable") query.availableQuantity = { $lte: 0 };
+  if (availability === "available") query.availableCopies = { $gt: 0 };
+  if (availability === "unavailable") query.availableCopies = { $lte: 0 };
 
   const books = await Book.find(query)
     .sort({ createdAt: -1 })
@@ -360,7 +391,9 @@ exports.getBookDetails = catchAsync(async (req, res) => {
         _id: null,
         totalBorrows: { $sum: 1 },
         currentlyBorrowed: {
-          $sum: { $cond: [{ $in: ["$status", ["issued", "renewed"]] }, 1, 0] },
+          $sum: {
+            $cond: [{ $in: ["$status", ["borrowed", "renewed"]] }, 1, 0],
+          },
         },
         overdue: {
           $sum: {
@@ -368,7 +401,7 @@ exports.getBookDetails = catchAsync(async (req, res) => {
               {
                 $and: [
                   { $lt: ["$dueDate", new Date()] },
-                  { $in: ["$status", ["issued", "renewed"]] },
+                  { $in: ["$status", ["borrowed", "renewed"]] },
                 ],
               },
               1,
@@ -383,7 +416,7 @@ exports.getBookDetails = catchAsync(async (req, res) => {
   res.status(200).json({
     success: true,
     data: {
-      ...book.toObject(),
+      ...book.toObject({ virtuals: true }),
       borrowStats: borrowStats[0] || {
         totalBorrows: 0,
         currentlyBorrowed: 0,
@@ -396,25 +429,24 @@ exports.getBookDetails = catchAsync(async (req, res) => {
 // 9. Create new book
 exports.addBook = async (req, res) => {
   try {
-    const { title, category, author, total_copies, available_copies } =
-      req.body;
+    const { title, author, category, totalCopies, availableCopies } = req.body;
 
-    if (!title || !author || !total_copies) {
-      return res
-        .status(400)
-        .json({ error: "Title, author, and total_copies are required" });
+    if (!title || !author || !totalCopies) {
+      return res.status(400).json({
+        error: "Title, author, and totalCopies are required",
+      });
     }
 
     const newBook = new Book({
       title,
-      category,
       author,
-      total_copies: Number(total_copies),
-      available_copies: available_copies
-        ? Number(available_copies)
-        : Number(total_copies),
-      cover_image_url: req.file ? `/uploads/${req.file.filename}` : null,
-      addedBy: req.user._id, // if you want to track who added it
+      category,
+      totalCopies: Number(totalCopies),
+      availableCopies: availableCopies
+        ? Number(availableCopies)
+        : Number(totalCopies),
+      coverImagePath: req.file ? `/uploads/${req.file.filename}` : null,
+      addedBy: req.user._id,
     });
 
     await newBook.save();
@@ -425,7 +457,7 @@ exports.addBook = async (req, res) => {
       data: newBook,
     });
   } catch (err) {
-    console.error("Error adding book:", err);
+    console.error("❌ Error in addBook:", err);
     res.status(500).json({ error: err.message });
   }
 };
@@ -433,11 +465,19 @@ exports.addBook = async (req, res) => {
 // 10. Update book
 exports.updateBook = catchAsync(async (req, res) => {
   const { id } = req.params;
+
+  console.log("📦 UpdateBook req.body:", req.body);
+  console.log("📷 UpdateBook req.file:", req.file);
+
   const updateData = req.body;
 
-  // Remove fields that shouldn't be updated directly
-  delete updateData.availableQuantity; // This should be calculated
+  // Don't allow certain fields to be changed
+  delete updateData.availableCopies;
   delete updateData.addedBy;
+
+  if (req.file) {
+    updateData.coverImagePath = `/uploads/${req.file.filename}`;
+  }
 
   const book = await Book.findByIdAndUpdate(id, updateData, {
     new: true,
@@ -465,7 +505,7 @@ exports.deleteBook = catchAsync(async (req, res) => {
   // Check if book has active borrows
   const activeBorrows = await Borrow.countDocuments({
     book_id: id,
-    status: { $in: ["issued", "renewed", "approved"] },
+    status: { $in: ["borrowed", "renewed", "approved"] },
   });
 
   if (activeBorrows > 0) {
@@ -495,71 +535,92 @@ exports.deleteBook = catchAsync(async (req, res) => {
 
 // 12. Send notification/reminder to users
 exports.sendNotification = catchAsync(async (req, res) => {
-  const { userIds, title, message, type = "general" } = req.body;
+  try {
+    const { userIds, subject, message, type } = req.body;
+    const title = subject;
 
-  if (!title || !message) {
-    return res.status(400).json({
+    if (!title || !message) {
+      return res.status(400).json({
+        success: false,
+        message: "Title and message are required",
+      });
+    }
+
+    let targetUsers = [];
+
+    if (Array.isArray(userIds) && userIds.length > 0) {
+      targetUsers = userIds;
+    } else {
+      const allUsers = await User.find({}, "_id");
+      if (!allUsers || allUsers.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "No users found to send notification",
+        });
+      }
+      targetUsers = allUsers.map((user) => user._id);
+    }
+
+    const notifications = targetUsers.map((userId) => ({
+      user_id: userId,
+      title,
+      message,
+      type,
+      sentBy: req.user._id,
+    }));
+
+    await Notification.insertMany(notifications);
+
+    res.status(200).json({
+      success: true,
+      message: `Notification sent to ${targetUsers.length} user(s)`,
+      count: targetUsers.length,
+    });
+  } catch (error) {
+    console.error("❌ sendNotification error:", error);
+    res.status(500).json({
       success: false,
-      message: "Title and message are required",
+      message: "Internal server error while sending notifications",
     });
   }
-
-  let targetUsers = [];
-
-  if (userIds && userIds.length > 0) {
-    // Send to specific users
-    targetUsers = userIds;
-  } else {
-    // Send to all users
-    const allUsers = await User.find({}, "_id");
-    targetUsers = allUsers.map((user) => user._id);
-  }
-
-  // Create notifications for all target users
-  const notifications = targetUsers.map((userId) => ({
-    user_id: userId,
-    title,
-    message,
-    type,
-    sentBy: req.user._id,
-  }));
-
-  await Notification.insertMany(notifications);
-
-  res.status(200).json({
-    success: true,
-    message: `Notification sent to ${targetUsers.length} users`,
-    count: targetUsers.length,
-  });
 });
 
 // 13. Send overdue reminders
 exports.sendOverdueReminders = catchAsync(async (req, res) => {
-  const overdueBooks = await Borrow.find({
-    dueDate: { $lt: new Date() },
-    status: { $in: ["issued", "renewed"] },
-  }).populate("user_id book_id");
+  try {
+    const overdueBooks = await Borrow.find({
+      dueDate: { $lt: new Date() },
+      status: { $in: ["approved", "borrowed", "renewed"] }, // Fixed status values
+    }).populate("user_id book_id");
 
-  const notifications = overdueBooks.map((borrow) => ({
-    user_id: borrow.user_id._id,
-    title: "Overdue Book Reminder",
-    message: `Your book "${borrow.book_id.title}" is overdue. Please return it as soon as possible to avoid additional fines.`,
-    type: "overdue_reminder",
-    sentBy: req.user._id,
-  }));
+    const notifications = overdueBooks.map((borrow) => ({
+      user_id: borrow.user_id._id,
+      title: "Overdue Book Reminder",
+      message: `Your book "${borrow.book_id.title}" is overdue. Please return it as soon as possible to avoid additional fines.`,
+      type: "overdue_reminder",
+      sentBy: req.user._id,
+    }));
 
-  if (notifications.length > 0) {
-    await Notification.insertMany(notifications);
+    if (notifications.length > 0) {
+      await Notification.insertMany(notifications);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Overdue reminders sent to ${notifications.length} users`,
+      count: notifications.length,
+    });
+  } catch (error) {
+    console.error("❌ Failed to send overdue reminders:", error); // <- log this
+    res.status(500).json({
+      success: false,
+      message: "Server error while sending overdue reminders",
+    });
   }
-
-  res.status(200).json({
-    success: true,
-    message: `Overdue reminders sent to ${notifications.length} users`,
-    count: notifications.length,
-  });
 });
 
 // 14. Send due date reminders
+// Fixed sendDueDateReminders
 exports.sendDueDateReminders = catchAsync(async (req, res) => {
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
@@ -567,7 +628,7 @@ exports.sendDueDateReminders = catchAsync(async (req, res) => {
 
   const dueSoonBooks = await Borrow.find({
     dueDate: { $lte: tomorrow, $gte: new Date() },
-    status: { $in: ["issued", "renewed"] },
+    status: { $in: ["approved", "borrowed", "renewed"] }, // Fixed status values
   }).populate("user_id book_id");
 
   const notifications = dueSoonBooks.map((borrow) => ({
@@ -594,9 +655,10 @@ exports.sendDueDateReminders = catchAsync(async (req, res) => {
 // ===================
 // REPORTS & ANALYTICS
 // ===================
-
-// 15. Dashboard summary for librarian
+// Fixed getLibrarianDashboard with correct status values
 exports.getLibrarianDashboard = catchAsync(async (req, res) => {
+  const currentDate = new Date();
+
   const [
     totalBooks,
     totalUsers,
@@ -609,12 +671,17 @@ exports.getLibrarianDashboard = catchAsync(async (req, res) => {
   ] = await Promise.all([
     Book.countDocuments(),
     User.countDocuments({ role: "user" }),
-    Borrow.countDocuments({ status: { $in: ["issued", "renewed"] } }),
+    // Fixed: Use correct status values from your schema
     Borrow.countDocuments({
-      status: { $in: ["issued", "renewed"] },
-      dueDate: { $lt: new Date() },
+      status: { $in: ["approved", "borrowed", "renewed"] },
     }),
-    Borrow.countDocuments({ status: "pending" }),
+    // Fixed: Use correct status values for overdue books
+    Borrow.countDocuments({
+      status: { $in: ["approved", "borrowed", "renewed"] },
+      dueDate: { $lt: currentDate },
+    }),
+    // Fixed: Use "requested" instead of "pending"
+    Borrow.countDocuments({ status: "requested" }),
     Payment.aggregate([{ $group: { _id: null, total: { $sum: "$amount" } } }]),
     Query.countDocuments({ status: { $in: ["open", "in_progress"] } }),
     Borrow.countDocuments({
@@ -651,7 +718,9 @@ exports.getMostBorrowedBooks = catchAsync(async (req, res) => {
         _id: "$book_id",
         borrowCount: { $sum: 1 },
         currentlyBorrowed: {
-          $sum: { $cond: [{ $in: ["$status", ["issued", "renewed"]] }, 1, 0] },
+          $sum: {
+            $cond: [{ $in: ["$status", ["borrowed", "renewed"]] }, 1, 0],
+          },
         },
         totalReturned: {
           $sum: { $cond: [{ $eq: ["$status", "returned"] }, 1, 0] },
@@ -683,9 +752,10 @@ exports.getOverdueReport = catchAsync(async (req, res) => {
   const { page = 1, limit = 10 } = req.query;
   const skip = (page - 1) * limit;
 
+  // Fixed: Use correct status values
   const overdueItems = await Borrow.find({
     dueDate: { $lt: new Date() },
-    status: { $in: ["issued", "renewed"] },
+    status: { $in: ["approved", "borrowed", "renewed"] },
   })
     .populate("user_id", "name email contact")
     .populate("book_id", "title author")
@@ -695,7 +765,7 @@ exports.getOverdueReport = catchAsync(async (req, res) => {
 
   const total = await Borrow.countDocuments({
     dueDate: { $lt: new Date() },
-    status: { $in: ["issued", "renewed"] },
+    status: { $in: ["approved", "borrowed", "renewed"] },
   });
 
   // Calculate days overdue for each item
