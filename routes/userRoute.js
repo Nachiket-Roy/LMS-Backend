@@ -4,6 +4,7 @@ const passport = require("passport");
 const userController = require("../controllers/userController");
 const { authorizeRoles } = require("../middlwares/authorizeRoles");
 const librarianController = require("../controllers/librarianController");
+const catchAsync = require("../utils/catchAsync");
 
 // Auth + Role middleware
 const auth = passport.authenticate("jwt", { session: false });
@@ -11,9 +12,7 @@ const auth = passport.authenticate("jwt", { session: false });
 // ===== BOOKS ===== (Accessible to all authenticated users)
 router.get(
   "/books",
-  auth,
-  authorizeRoles("librarian", "admin", "user"),
-  librarianController.getAllBooks
+  catchAsync(librarianController.getAllBooks)
 );
 
 // ===== PROFILE MANAGEMENT =====
@@ -21,62 +20,59 @@ router.get(
   "/profile",
   auth,
   authorizeRoles("user", "librarian", "admin"),
-  userController.getProfile
+  catchAsync(userController.getProfile)
 );
 router.put(
   "/profile",
   auth,
   authorizeRoles("user", "librarian", "admin"),
-  userController.updateProfile
+  catchAsync(userController.updateProfile)
 );
 router.delete(
   "/profile",
   auth,
   authorizeRoles("user", "librarian", "admin"),
-  userController.deleteAccount
+  catchAsync(userController.deleteAccount)
 );
 
 // ===== BORROW MANAGEMENT =====
-// 🔧 CHANGED: '/borrows' → '/borrow-requests'
 router.get(
   "/borrow-requests",
   auth,
   authorizeRoles("user"),
-  userController.getBorrowRequests
+  catchAsync(userController.getBorrowRequests)
 );
 router.post(
   "/borrow/request",
   auth,
   authorizeRoles("user"),
-  userController.requestBorrow
+  catchAsync(userController.requestBorrow)
 );
 router.post(
   "/borrow/renew/:id",
   auth,
   authorizeRoles("user"),
-  userController.renewBook
+  catchAsync(userController.renewBook)
 );
 
 // ===== OVERDUE & HISTORY =====
-// 🔧 CHANGED: '/overdue' → '/overdue-books'
 router.get(
   "/overdue-books",
   auth,
   authorizeRoles("user"),
-  userController.getOverdueBooks
+  catchAsync(userController.getOverdueBooks)
 );
 router.get(
   "/reading-history",
   auth,
   authorizeRoles("user"),
-  userController.getReadingHistory
+  catchAsync(userController.getReadingHistory)
 );
-// 🔧 CHANGED: '/due-soon' → '/latest-due-notification'
 router.get(
   "/latest-due-notification",
   auth,
   authorizeRoles("user"),
-  userController.latestDueNotification
+  catchAsync(userController.latestDueNotification)
 );
 
 // ===== NOTIFICATIONS =====
@@ -84,34 +80,33 @@ router.get(
   "/notifications",
   auth,
   authorizeRoles("user"),
-  userController.getNotifications
+  catchAsync(userController.getNotifications)
 );
 router.get(
   "/notifications/unread-count",
   auth,
   authorizeRoles("user"),
-  userController.getUnreadCount
+  catchAsync(userController.getUnreadCount)
 );
 router.put(
   "/notifications/:id/read",
   auth,
   authorizeRoles("user"),
-  userController.markAsRead
+  catchAsync(userController.markAsRead)
 );
 router.put(
   "/notifications/mark-all-read",
   auth,
   authorizeRoles("user"),
-  userController.markAllAsRead
+  catchAsync(userController.markAllAsRead)
 );
 
 // ===== PAYMENTS =====
-// 🔧 CHANGED: '/payments' → '/payment-history'
 router.get(
   "/payment-history",
   auth,
   authorizeRoles("user"),
-  userController.getPaymentHistory
+  catchAsync(userController.getPaymentHistory)
 );
 
 // ===== DASHBOARD =====
@@ -119,46 +114,33 @@ router.get(
   "/dashboard-summary",
   auth,
   authorizeRoles("user"),
-  userController.getDashboardSummary
+  catchAsync(userController.getDashboardSummary)
 );
 
 // ===== FEEDBACK & QUERIES =====
-// Submit new feedback/query
 router.post(
   "/feedback",
   auth,
   authorizeRoles("user"),
-  userController.submitQuery
+  catchAsync(userController.submitQuery)
 );
-
-// Get all user's queries with filtering and search
 router.get(
   "/queries",
   auth,
   authorizeRoles("user"),
-  userController.getUserQueries
+  catchAsync(userController.getUserQueries)
 );
-
-// Get specific query by ID
 router.get(
   "/queries/:id",
   auth,
   authorizeRoles("user"),
-  userController.getUserQueryById
+  catchAsync(userController.getUserQueryById)
 );
-
-// Delete user's open query
 router.delete(
   "/queries/:id",
   auth,
   authorizeRoles("user"),
-  userController.deleteUserQuery
+  catchAsync(userController.deleteUserQuery)
 );
-// router.get(
-//   "/notifications/:id",
-//   auth,
-//   authorizeRoles("user"),
-//   userController.getNotificationById
-// );
 
 module.exports = router;

@@ -6,8 +6,7 @@ const Payment = require("../models/Payment");
 const Fine = require("../models/Fine");
 const catchAsync = require("../utils/catchAsync");
 const Query = require("../models/Query");
-const { performOverdueFineUpdate } = require('../services/fineService');
-
+const { performOverdueFineUpdate } = require("../services/fineService");
 
 // 1. Borrow Requests (pending/approved/rejected)
 exports.getBorrowRequests = catchAsync(async (req, res) => {
@@ -20,7 +19,7 @@ exports.getBorrowRequests = catchAsync(async (req, res) => {
   }
 
   const requests = await Borrow.find(query)
-    .populate("book_id", "title author")
+    .populate("book_id", "title author coverImagePath") // ✅ Add coverImagePath here
     .sort({ createdAt: -1 });
 
   res.status(200).json({
@@ -29,6 +28,7 @@ exports.getBorrowRequests = catchAsync(async (req, res) => {
     data: requests,
   });
 });
+
 
 // 2. Renew Book
 exports.renewBook = catchAsync(async (req, res) => {
@@ -326,51 +326,52 @@ exports.updateProfile = catchAsync(async (req, res) => {
     data: updatedUser,
   });
 });
-
-// 10. Delete Account
 exports.deleteAccount = catchAsync(async (req, res) => {
-  const userId = req.user._id;
+  const targetUserId = req.params.id || req.user._id; // Admin can specify target
+  const requesterRole = req.user.role;
+  const isSelfDelete = targetUserId.toString() === req.user._id.toString();
 
-  // Check for active borrows
-  const activeBorrows = await Borrow.countDocuments({
-    user_id: userId,
-    status: { $in: ["approved", "issued", "renewed", "requested"] },
-  });
-
-  if (activeBorrows > 0) {
-    return res.status(400).json({
-      success: false,
-      message:
-        "Cannot delete account with active book borrows. Please return all books first.",
+  // ✅ Only check borrows/fines for self-deleting users
+  if (requesterRole === 'user' || isSelfDelete) {
+    const activeBorrows = await Borrow.countDocuments({
+      user_id: targetUserId,
+      status: { $in: ["approved", "issued", "renewed", "requested"] },
     });
+
+    if (activeBorrows > 0) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Cannot delete account with active book borrows. Please return all books first.",
+      });
+    }
+
+    const outstandingFines = await Fine.countDocuments({
+      user_id: targetUserId,
+      status: { $in: ["unpaid", "pending"] },
+    });
+
+    if (outstandingFines > 0) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Cannot delete account with outstanding fines. Please clear all dues first.",
+      });
+    }
   }
 
-  // Check for outstanding fines
-  const outstandingFines = await Fine.countDocuments({
-    user_id: userId,
-    status: { $in: ["unpaid", "pending"] },
-  });
-
-  if (outstandingFines > 0) {
-    return res.status(400).json({
-      success: false,
-      message:
-        "Cannot delete account with outstanding fines. Please clear all dues first.",
-    });
-  }
-
-  // Delete user data
+  // ✅ Perform deletion
   await Promise.all([
-    User.findByIdAndDelete(userId),
-    Borrow.deleteMany({ user_id: userId }),
-    Notification.deleteMany({ user_id: userId }),
-    Payment.deleteMany({ user_id: userId }),
-    Fine.deleteMany({ user_id: userId }),
+    User.findByIdAndDelete(targetUserId),
+    Borrow.deleteMany({ user_id: targetUserId }),
+    Notification.deleteMany({ user_id: targetUserId }),
+    Payment.deleteMany({ user_id: targetUserId }),
+    Fine.deleteMany({ user_id: targetUserId }),
   ]);
 
   res.status(200).json({
     success: true,
-    message: "Account deleted successfully",
+    message: `Account deleted successfully${isSelfDelete ? '' : ' by admin'}`,
   });
 });
 

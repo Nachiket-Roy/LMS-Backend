@@ -13,6 +13,8 @@ const router = require("./routes/auth");
 const Librarian = require("./routes/librarian")
 const Admin = require("./routes/admin")
 const cors = require("cors");
+const multer = require("multer")
+
 // const User = require('./models/User');
 // MongoDB connection
 const DB = process.env.MONGODB;

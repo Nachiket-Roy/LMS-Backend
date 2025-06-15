@@ -3,191 +3,165 @@ const router = express.Router();
 const passport = require("passport");
 const librarianController = require("../controllers/librarianController");
 const { authorizeRoles } = require("../middlwares/authorizeRoles");
-const upload = require("./multer")
-const catchAsync = require("../utils/catchAsync")
+const upload = require("./multer");
+const catchAsync = require("../utils/catchAsync");
+
 // Auth + Role middleware
 const auth = passport.authenticate("jwt", { session: false });
+
 // ===================
 // QUERY MANAGEMENT ROUTES
 // ===================
-
-// Get all queries/feedback
 router.get(
   "/queries",
   auth,
   authorizeRoles("librarian", "admin"),
-  librarianController.getAllQueries
+  catchAsync(librarianController.getAllQueries)
 );
 
-// Get single query details
 router.get(
   "/queries/:id",
   auth,
   authorizeRoles("librarian", "admin"),
-  librarianController.getQueryDetails
+  catchAsync(librarianController.getQueryDetails)
 );
 
-// Update query status (resolve/update)
 router.patch(
   "/queries/:id/status",
   auth,
   authorizeRoles("librarian", "admin"),
-  librarianController.updateQueryStatus
+  catchAsync(librarianController.updateQueryStatus)
 );
 
 // ===================
 // BORROW MANAGEMENT ROUTES
 // ===================
-
-// Get all borrow requests
 router.get(
   "/borrow-requests",
   auth,
   authorizeRoles("librarian", "admin"),
-  librarianController.getAllBorrowRequests
+  catchAsync(librarianController.getAllBorrowRequests)
 );
 
-// Update borrow status (approve/reject/issue/return)
 router.patch(
   "/borrow-requests/:id/status",
   auth,
   authorizeRoles("librarian", "admin"),
-  librarianController.updateBorrowStatus
+  catchAsync(librarianController.updateBorrowStatus)
 );
 
-// Process renewal requests
 router.patch(
   "/renewal-requests/:id/process",
   auth,
   authorizeRoles("librarian", "admin"),
-  librarianController.processRenewalRequest
+  catchAsync(librarianController.processRenewalRequest)
 );
 
 // ===================
 // BOOK MANAGEMENT ROUTES (CRUD)
 // ===================
+// router.get(
+//   "/books",
+//   auth,
+//   authorizeRoles("librarian", "admin", "user"),
+//   catchAsync(librarianController.getAllBooks)
+// );
 
-// Get all books
-router.get(
-  "/books",
-  auth,
-  authorizeRoles("librarian", "admin", "user"),
-  librarianController.getAllBooks
-);
-
-// Get single book details
 router.get(
   "/books/:id",
   auth,
   authorizeRoles("librarian", "admin"),
-  librarianController.getBookDetails
+  catchAsync(librarianController.getBookDetails)
 );
 
-// Create new book
 router.post(
   "/books",
   auth,
   authorizeRoles("librarian", "admin"),
-  upload.single("coverImage"), // 'cover' is the field name expected in the form-data
+  upload.single("coverImage"),
   catchAsync(librarianController.addBook)
 );
 
-// Update book
 router.patch(
   "/books/:id",
   auth,
   authorizeRoles("librarian", "admin"),
-  upload.single("coverImage"), // ✅ apply multer here
-  librarianController.updateBook
+  upload.single("coverImage"),
+  catchAsync(librarianController.updateBook)
 );
 
-
-// Delete book
 router.delete(
   "/books/:id",
   auth,
   authorizeRoles("librarian", "admin"),
-  librarianController.deleteBook
+  catchAsync(librarianController.deleteBook)
 );
 
 // ===================
 // NOTIFICATION ROUTES
 // ===================
-
-// Send custom notification
 router.post(
   "/notifications/send",
   auth,
   authorizeRoles("librarian", "admin"),
-  librarianController.sendNotification
+  catchAsync(librarianController.sendNotification)
 );
 
-// Send overdue reminders
 router.post(
   "/notifications/overdue-reminders",
   auth,
   authorizeRoles("librarian", "admin"),
-  librarianController.sendOverdueReminders
+  catchAsync(librarianController.sendOverdueReminders)
 );
 
-// Send due date reminders
 router.post(
   "/notifications/due-reminders",
   auth,
   authorizeRoles("librarian", "admin"),
-  librarianController.sendDueDateReminders
+  catchAsync(librarianController.sendDueDateReminders)
 );
 
 // ===================
 // REPORTS & ANALYTICS ROUTES
 // ===================
-
-// Librarian dashboard summary
 router.get(
   "/dashboard",
   auth,
   authorizeRoles("librarian"),
-  librarianController.getLibrarianDashboard
+  catchAsync(librarianController.getLibrarianDashboard)
 );
 
-// Most borrowed books report
 router.get(
   "/reports/most-borrowed",
-  auth,
-  authorizeRoles("librarian", "admin"),
-  librarianController.getMostBorrowedBooks
+  catchAsync(librarianController.getMostBorrowedBooks)
 );
 
-// Overdue items report
 router.get(
   "/reports/overdue",
   auth,
   authorizeRoles("librarian", "admin"),
-  librarianController.getOverdueReport
+  catchAsync(librarianController.getOverdueReport)
 );
 
-// Fine collection report
 router.get(
   "/reports/fines",
   auth,
   authorizeRoles("librarian", "admin"),
-  librarianController.getFineReport
+  catchAsync(librarianController.getFineReport)
 );
 
-// Monthly borrow statistics
 router.get(
   "/reports/monthly-stats",
   auth,
   authorizeRoles("librarian", "admin"),
-  librarianController.getMonthlyBorrowStats
+  catchAsync(librarianController.getMonthlyBorrowStats)
 );
 
-// User activity report
 router.get(
   "/reports/user-activity",
   auth,
   authorizeRoles("librarian", "admin"),
-  librarianController.getUserActivityReport
+  catchAsync(librarianController.getUserActivityReport)
 );
 
 module.exports = router;

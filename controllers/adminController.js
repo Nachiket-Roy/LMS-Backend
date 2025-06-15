@@ -1,8 +1,8 @@
 const User = require("../models/User");
 const Borrow = require("../models/Borrow");
 const Payment = require("../models/Payment");
-const Notification = require("../models/Notification");
 const catchAsync = require("../utils/catchAsync");
+const Fine = require("../models/Fine")
 
 // ==================== USER MANAGEMENT ====================
 
@@ -231,5 +231,41 @@ exports.getUserActivityLogs = catchAsync(async (req, res) => {
     page: parseInt(page),
     pages: Math.ceil(total / limit),
     data: activities,
+  });
+});
+
+exports.getAllFines = catchAsync(async (req, res) => {
+  const { status } = req.query;
+
+  const filter = {};
+  if (status) filter.status = status;
+
+  const fines = await Fine.find(filter)
+    .populate("user_id", "name email")
+    .populate("book_id", "title")
+    .populate("borrow_id", "_id status");
+
+  res.status(200).json({
+    success: true,
+    count: fines.length,
+    data: fines,
+  });
+});
+
+// 2. Get all payments with optional method or status filter
+exports.getAllPayments = catchAsync(async (req, res) => {
+  const { method, status } = req.query;
+
+  const filter = {};
+  if (method) filter.method = method;
+  if (status) filter.status = status;
+
+  const payments = await Payment.find(filter)
+    .populate("user_id", "name email");
+
+  res.status(200).json({
+    success: true,
+    count: payments.length,
+    data: payments,
   });
 });

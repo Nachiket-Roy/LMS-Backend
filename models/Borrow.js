@@ -40,6 +40,7 @@ const borrowSchema = new mongoose.Schema(
         );
       },
     },
+
     dueDate: {
       type: Date,
       required: function () {
@@ -217,9 +218,16 @@ borrowSchema.pre("save", async function (next) {
       }
     }
 
-    // Set issue date when status changes to approved
-    if (this.status === "approved" && !this.issueDate) {
-      this.issueDate = new Date();
+    // Set issue date and due date when status changes to approved
+    if (this.status === "approved") {
+      if (!this.issueDate) {
+        this.issueDate = new Date();
+      }
+      if (!this.dueDate) {
+        this.dueDate = new Date(
+          this.issueDate.getTime() + 7 * 24 * 60 * 60 * 1000
+        );
+      }
     }
 
     const validTransitions = {

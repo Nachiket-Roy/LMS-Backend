@@ -23,6 +23,7 @@ exports.login = catchAsync(async (req, res) => {
   const { email, password } = req.body;
 
   if (!email || !password) {
+    console.log("Missing Credentials");
     return res.status(400).json({ message: "Email and password are required" });
   }
 
@@ -38,6 +39,7 @@ exports.login = catchAsync(async (req, res) => {
   });
 
   if (error) {
+    console.log("authentication failed");
     return res.status(401).json({ message: error });
   }
 
@@ -57,9 +59,13 @@ exports.login = catchAsync(async (req, res) => {
   await user.addRefreshToken(refreshToken);
 
   // Set cookies with appropriate expiry times
-  res
+  return res
     .cookie("accessToken", accessToken, getCookieOptions(24 * 60 * 60 * 1000)) // 1 day
-    .cookie("refreshToken", refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000)) // 7 days
+    .cookie(
+      "refreshToken",
+      refreshToken,
+      getCookieOptions(7 * 24 * 60 * 60 * 1000)
+    ) // 7 days
     .json({
       message: "Login successful",
       user: {
@@ -80,14 +86,13 @@ exports.login = catchAsync(async (req, res) => {
 // SECURED: Only admins can set custom roles during registration
 exports.register = catchAsync(async (req, res) => {
   const { name, email, password, role } = req.body;
-
   if (!name || !email || !password) {
     return res
       .status(400)
       .json({ message: "Name, email and password are required" });
   }
 
-  const existingUser = await User.findOne({  email });
+  const existingUser = await User.findOne({ email });
   if (existingUser) {
     return res.status(409).json({ message: "Email already registered" });
   }
@@ -184,25 +189,33 @@ exports.refreshToken = catchAsync(async (req, res) => {
 
   // Token is valid and exists: rotate it
   await user.removeRefreshToken(refreshToken); // Remove old
-  
+
   const newRefreshToken = jwt.sign(
     { id: user._id, role: user.role },
     JWT_REFRESH_SECRET,
     { expiresIn: REFRESH_EXPIRES_IN }
   );
-  
+
   const newAccessToken = jwt.sign(
     { id: user._id, role: user.role },
     JWT_SECRET,
     { expiresIn: ACCESS_EXPIRES_IN }
   );
-  
+
   await user.addRefreshToken(newRefreshToken); // Add new
-  
+
   // FIXED: Added proper response with correct cookie expiry times
   res
-    .cookie("accessToken", newAccessToken, getCookieOptions(24 * 60 * 60 * 1000)) // 1 day
-    .cookie("refreshToken", newRefreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000)) // 7 days
+    .cookie(
+      "accessToken",
+      newAccessToken,
+      getCookieOptions(24 * 60 * 60 * 1000)
+    ) // 1 day
+    .cookie(
+      "refreshToken",
+      newRefreshToken,
+      getCookieOptions(7 * 24 * 60 * 60 * 1000)
+    ) // 7 days
     .json({
       message: "Tokens refreshed successfully",
       user: {
@@ -210,7 +223,7 @@ exports.refreshToken = catchAsync(async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
-      }
+      },
     });
 });
 

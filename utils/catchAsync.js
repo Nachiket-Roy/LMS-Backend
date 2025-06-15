@@ -1,5 +1,5 @@
 module.exports = function (fn) {
-    return function (req, res, next){
-        fn(req, res, next).catch(next); // automatically forward errors to express
-    }
-}
+  return function (req, res, next) {
+    return fn(req, res, next).catch(next); // ✅ return added
+  };
+};

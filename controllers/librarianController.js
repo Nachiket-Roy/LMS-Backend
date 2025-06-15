@@ -116,7 +116,6 @@ exports.updateQueryStatus = catchAsync(async (req, res) => {
   });
 });
 
-
 // ===================
 // BORROW MANAGEMENT
 // ===================
@@ -127,7 +126,9 @@ exports.getAllBorrowRequests = catchAsync(async (req, res) => {
   const skip = (page - 1) * limit;
 
   const query = {};
-  if (status) query.status = status;
+  if (status && status !== "all") {
+    query.status = status;
+  }
 
   const requests = await Borrow.find(query)
     .populate("user_id", "name email contact")
@@ -246,21 +247,20 @@ exports.updateBorrowStatus = catchAsync(async (req, res) => {
   console.log("📖 Borrow.book_id:", borrow.book_id);
 
   // Send notification to user
-if (notificationMessages[status]) {
-  try {
-    await Notification.create({
-      user_id: borrow.user_id._id,
-      title: "Book Request Update",
-      message: `${notificationMessages[status]}: "${borrow.book_id.title}"`,
-      type: "borrow_update",
-      sentBy: req.user._id, // optional
-    });
-  } catch (notifError) {
-    console.error("❌ Failed to send notification:", notifError.message);
-    // Don't crash the request — let it continue
+  if (notificationMessages[status]) {
+    try {
+      await Notification.create({
+        user_id: borrow.user_id._id,
+        title: "Book Request Update",
+        message: `${notificationMessages[status]}: "${borrow.book_id.title}"`,
+        type: "borrow_update",
+        sentBy: req.user._id, // optional
+      });
+    } catch (notifError) {
+      console.error("❌ Failed to send notification:", notifError.message);
+      // Don't crash the request — let it continue
+    }
   }
-}
-
 
   res.status(200).json({
     success: true,
@@ -268,7 +268,6 @@ if (notificationMessages[status]) {
     data: updatedBorrow,
   });
 });
-
 exports.processRenewalRequest = catchAsync(async (req, res) => {
   const { id } = req.params;
   const { action, newDueDate, notes } = req.body;
@@ -281,6 +280,7 @@ exports.processRenewalRequest = catchAsync(async (req, res) => {
   }
 
   const borrow = await Borrow.findById(id).populate("user_id book_id");
+
   if (!borrow || borrow.status !== "renew_requested") {
     return res.status(404).json({
       success: false,
@@ -288,27 +288,23 @@ exports.processRenewalRequest = catchAsync(async (req, res) => {
     });
   }
 
-  const updateData = {
-    processedBy: req.user._id,
-    renewalProcessedAt: new Date(),
-  };
-
-  if (notes) updateData.notes = notes;
+  borrow.renewalProcessedAt = new Date();
+  borrow.processedBy = req.user._id;
+  if (notes) borrow.notes = notes;
 
   if (action === "approve") {
-    updateData.status = "renewed";
-    updateData.dueDate = newDueDate
+    borrow.status = "approve";
+    borrow.dueDate = newDueDate
       ? new Date(newDueDate)
       : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
-    updateData.renewCount = (borrow.renewCount || 0) + 1;
-  } else {
-    updateData.status = borrow.previousStatus || "approved"; // Revert to previous status
-    updateData.renewalRequestDate = null;
+    borrow.renewCount = (borrow.renewCount || 0) + 1;
+    borrow.renewalRequestDate = null;
+  } else if (action === "reject") {
+    borrow.status = "approved"; // Or "approved" depending on your flow
+    borrow.renewalRequestDate = null;
   }
 
-  const updatedBorrow = await Borrow.findByIdAndUpdate(id, updateData, {
-    new: true,
-  });
+  await borrow.save();
 
   // Send notification
   await Notification.create({
@@ -321,13 +317,10 @@ exports.processRenewalRequest = catchAsync(async (req, res) => {
   res.status(200).json({
     success: true,
     message: `Renewal request ${action}ed successfully`,
-    data: updatedBorrow,
+    data: borrow,
   });
 });
-
-// ===================
-// BOOK MANAGEMENT (CRUD)
-// ===================
+//========= BOOK MANAGEMENT (CRUD) ===================
 
 // 7. Get all books with filters
 exports.getAllBooks = catchAsync(async (req, res) => {
@@ -339,16 +332,20 @@ exports.getAllBooks = catchAsync(async (req, res) => {
     page = 1,
     limit = 10,
   } = req.query;
-  const skip = (page - 1) * limit;
 
-  // Build query object
+  const pageNum = parseInt(page);
+  const limitNum = parseInt(limit);
+  const skip = (pageNum - 1) * limitNum;
+
   const query = {};
-  if (search) {
+
+  if (search?.trim()) {
     query.$or = [
-      { title: { $regex: search, $options: "i" } },
-      { author: { $regex: search, $options: "i" } },
+      { title: { $regex: search.trim(), $options: "i" } },
+      { author: { $regex: search.trim(), $options: "i" } },
     ];
   }
+
   if (category) query.category = category;
   if (author) query.author = { $regex: author, $options: "i" };
   if (availability === "available") query.availableCopies = { $gt: 0 };
@@ -357,7 +354,8 @@ exports.getAllBooks = catchAsync(async (req, res) => {
   const books = await Book.find(query)
     .sort({ createdAt: -1 })
     .skip(skip)
-    .limit(parseInt(limit));
+    .limit(limitNum)
+    .lean();
 
   const total = await Book.countDocuments(query);
 
@@ -365,11 +363,12 @@ exports.getAllBooks = catchAsync(async (req, res) => {
     success: true,
     count: books.length,
     total,
-    page: parseInt(page),
-    pages: Math.ceil(total / limit),
+    page: pageNum,
+    pages: Math.ceil(total / limitNum),
     data: books,
   });
 });
+
 
 // 8. Get single book details
 exports.getBookDetails = catchAsync(async (req, res) => {
